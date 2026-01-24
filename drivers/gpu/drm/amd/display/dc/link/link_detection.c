@@ -78,6 +78,7 @@ static enum ddc_transaction_type get_ddc_transaction_type(enum signal_type sink_
 	case SIGNAL_TYPE_DVI_SINGLE_LINK:
 	case SIGNAL_TYPE_DVI_DUAL_LINK:
 	case SIGNAL_TYPE_HDMI_TYPE_A:
+	case SIGNAL_TYPE_HDMI_FRL:
 	case SIGNAL_TYPE_LVDS:
 	case SIGNAL_TYPE_RGB:
 		transaction_type = DDC_TRANSACTION_TYPE_I2C;
@@ -1017,10 +1018,11 @@ static bool detect_link_and_local_sink(struct dc_link *link,
 
 		/* From Disconnected-to-Connected. */
 		switch (link->connector_signal) {
+		case SIGNAL_TYPE_HDMI_FRL:
 		case SIGNAL_TYPE_HDMI_TYPE_A: {
 			sink_caps.transaction_type = DDC_TRANSACTION_TYPE_I2C;
 			if (aud_support->hdmi_audio_native)
-				sink_caps.signal = SIGNAL_TYPE_HDMI_TYPE_A;
+				sink_caps.signal = link->connector_signal;
 			else
 				sink_caps.signal = SIGNAL_TYPE_DVI_SINGLE_LINK;
 			break;
@@ -1507,6 +1509,7 @@ bool link_is_hdcp14(struct dc_link *link, enum signal_type signal)
 	case SIGNAL_TYPE_DVI_SINGLE_LINK:
 	case SIGNAL_TYPE_DVI_DUAL_LINK:
 	case SIGNAL_TYPE_HDMI_TYPE_A:
+	case SIGNAL_TYPE_HDMI_FRL:
 	/* HDMI doesn't tell us its HDCP(1.4) capability, so assume to always be capable,
 	 * we can poll for bksv but some displays have an issue with this. Since its so rare
 	 * for a display to not be 1.4 capable, this assumtion is ok
@@ -1533,6 +1536,7 @@ bool link_is_hdcp22(struct dc_link *link, enum signal_type signal)
 	case SIGNAL_TYPE_DVI_SINGLE_LINK:
 	case SIGNAL_TYPE_DVI_DUAL_LINK:
 	case SIGNAL_TYPE_HDMI_TYPE_A:
+	case SIGNAL_TYPE_HDMI_FRL:
 		ret = (link->hdcp_caps.rx_caps.fields.version == 0x4) ? 1:0;
 		break;
 	default:

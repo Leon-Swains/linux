@@ -47,6 +47,7 @@
 #include "protocols/link_dp_training.h"
 #include "protocols/link_edp_panel_control.h"
 #include "protocols/link_dp_dpia_bw.h"
+#include "protocols/link_frl_training.h"
 
 #include "dm_helpers.h"
 #include "link_enc_cfg.h"
@@ -686,6 +687,9 @@ static void update_psp_stream_config(struct pipe_ctx *pipe_ctx, bool dpms_off)
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		config.stream_enc_idx =
 				pipe_ctx->stream_res.hpo_dp_stream_enc->id - ENGINE_ID_HPO_DP_0;
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		config.stream_enc_idx =
+				pipe_ctx->stream_res.hpo_hdmi_stream_enc->id - ENGINE_ID_HPO_0;
 
 	/* dig back end */
 	config.dig_be = pipe_ctx->stream->link->link_enc_hw_inst;
@@ -694,6 +698,8 @@ static void update_psp_stream_config(struct pipe_ctx *pipe_ctx, bool dpms_off)
 	config.link_enc_idx = link_enc->transmitter - TRANSMITTER_UNIPHY_A;
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		config.link_enc_idx = pipe_ctx->link_res.hpo_dp_link_enc->inst;
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		config.link_enc_idx = pipe_ctx->link_res.hpo_hdmi_link_enc->inst;
 
 	/* dio output index is dpia index for DPIA endpoint & dcio index by default */
 	if (pipe_ctx->stream->link->ep_type == DISPLAY_ENDPOINT_USB4_DPIA)
@@ -1962,7 +1968,7 @@ static void disable_link(struct dc_link *link,
 	}
 }
 
-static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
+static enum dc_status enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 {
 	struct dc_stream_state *stream = pipe_ctx->stream;
 	struct dc_link *link = stream->link;
@@ -1973,7 +1979,46 @@ static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 	bool is_vga_mode = (stream->timing.h_addressable == 640)
 			&& (stream->timing.v_addressable == 480);
 	struct dc *dc = pipe_ctx->stream->ctx->dc;
+	uint8_t frl_rate, lane_count;
+
+	DC_LOG_HW_LINK_TRAINING("enable_link_hdmi entered\n");
+
+	if (dc_is_hdmi_frl_signal(stream->signal)) {
+		link->cur_link_settings.frl_rate = 6;
+		link->cur_link_settings.lane_count = 4;
+
+		DC_LOG_HW_LINK_TRAINING(
+			"FORCING FRL: rate=%d lanes=%d\n",
+			link->cur_link_settings.frl_rate,
+			link->cur_link_settings.lane_count);
+	}
+
 	const struct link_hwss *link_hwss = get_link_hwss(link, &pipe_ctx->link_res);
+
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal) &&
+		link_hwss->ext.enable_hdmi_link_output) {
+
+		DC_LOG_HW_LINK_TRAINING("HDMI FRL detected, using HPO path\n");
+
+		link_hwss->ext.enable_hdmi_link_output(
+			link,
+			&pipe_ctx->link_res,
+			pipe_ctx->stream->signal,
+			&link->cur_link_settings);
+
+		frl_rate = link->cur_link_settings.frl_rate;
+		lane_count = (frl_rate <= 3) ? 3 : 4;
+
+		if (!dc_link_perform_frl_training(
+				link,
+				&pipe_ctx->link_res,
+				frl_rate,
+				lane_count)) {
+			DC_LOG_HW_LINK_TRAINING("HDMI FRL: training failed\n");
+			return DC_ERROR_UNEXPECTED;
+		}
+		return DC_OK;
+	}
 
 	if (stream->phy_pix_clk == 0)
 		stream->phy_pix_clk = stream->timing.pix_clk_100hz / 10;
@@ -1981,7 +2026,7 @@ static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 		is_over_340mhz = true;
 	if (dc_is_tmds_signal(stream->signal) && stream->phy_pix_clk > 6000000UL) {
 		ASSERT(false);
-		return;
+		return DC_OK;
 	}
 
 	if (dc_is_hdmi_signal(pipe_ctx->stream->signal)) {
@@ -2004,7 +2049,7 @@ static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 		}
 	}
 
-	if (dc_is_hdmi_signal(pipe_ctx->stream->signal))
+	if (dc_is_hdmi_tmds_signal(pipe_ctx->stream->signal))
 		write_scdc_data(
 			stream->link->ddc,
 			stream->phy_pix_clk,
@@ -2033,6 +2078,8 @@ static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 
 	if (dc_is_hdmi_signal(pipe_ctx->stream->signal))
 		read_scdc_data(link->ddc);
+
+	return DC_OK;
 }
 
 static enum dc_status enable_link_dp(struct dc_state *state,
@@ -2232,6 +2279,7 @@ static enum dc_status enable_link(
 		return DC_ERROR_UNEXPECTED;
 	link = stream->link;
 
+	DC_LOG_HW_LINK_TRAINING("enable_link entered\n");
 	/* There's some scenarios where driver is unloaded with display
 	 * still enabled. When driver is reloaded, it may cause a display
 	 * to not light up if there is a mismatch between old and new
@@ -2240,6 +2288,7 @@ static enum dc_status enable_link(
 	 */
 	if (link->link_status.link_active)
 		disable_link(link, &pipe_ctx->link_res, pipe_ctx->stream->signal);
+	DC_LOG_HW_LINK_TRAINING("link disabled\n");
 
 	switch (pipe_ctx->stream->signal) {
 	case SIGNAL_TYPE_DISPLAY_PORT:
@@ -2255,8 +2304,8 @@ static enum dc_status enable_link(
 	case SIGNAL_TYPE_DVI_SINGLE_LINK:
 	case SIGNAL_TYPE_DVI_DUAL_LINK:
 	case SIGNAL_TYPE_HDMI_TYPE_A:
-		enable_link_hdmi(pipe_ctx);
-		status = DC_OK;
+	case SIGNAL_TYPE_HDMI_FRL:
+		status = enable_link_hdmi(pipe_ctx);
 		break;
 	case SIGNAL_TYPE_LVDS:
 		enable_link_lvds(pipe_ctx);
@@ -2361,6 +2410,8 @@ void link_set_dpms_off(struct pipe_ctx *pipe_ctx)
 
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		vpg = pipe_ctx->stream_res.hpo_dp_stream_enc->vpg;
+	else if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		vpg = pipe_ctx->stream_res.hpo_hdmi_stream_enc->vpg;
 	if (dc_is_virtual_signal(pipe_ctx->stream->signal))
 		return;
 
@@ -2392,7 +2443,7 @@ void link_set_dpms_off(struct pipe_ctx *pipe_ctx)
 			dp_is_128b_132b_signal(pipe_ctx))
 		update_sst_payload(pipe_ctx, false);
 
-	if (dc_is_hdmi_signal(pipe_ctx->stream->signal)) {
+	if (dc_is_hdmi_tmds_signal(pipe_ctx->stream->signal)) {
 		struct ext_hdmi_settings settings = {0};
 		enum engine_id eng_id = pipe_ctx->stream_res.stream_enc->id;
 
@@ -2439,7 +2490,7 @@ void link_set_dpms_off(struct pipe_ctx *pipe_ctx)
 		if (dc_is_dp_signal(pipe_ctx->stream->signal))
 			link_set_dsc_enable(pipe_ctx, false);
 	}
-	if (dp_is_128b_132b_signal(pipe_ctx)) {
+	if (dp_is_128b_132b_signal(pipe_ctx) || dc_is_hdmi_frl_signal(pipe_ctx->stream->signal)) {
 		if (pipe_ctx->stream_res.tg->funcs->set_out_mux)
 			pipe_ctx->stream_res.tg->funcs->set_out_mux(pipe_ctx->stream_res.tg, OUT_MUX_DIO);
 	}
@@ -2477,6 +2528,8 @@ void link_set_dpms_on(
 
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		vpg = pipe_ctx->stream_res.hpo_dp_stream_enc->vpg;
+	else if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		vpg = pipe_ctx->stream_res.hpo_hdmi_stream_enc->vpg;
 	if (dc_is_virtual_signal(pipe_ctx->stream->signal))
 		return;
 
@@ -2495,7 +2548,8 @@ void link_set_dpms_on(
 	ASSERT(link_enc);
 
 	if (!dc_is_virtual_signal(pipe_ctx->stream->signal)
-			&& !dp_is_128b_132b_signal(pipe_ctx)) {
+			&& !dp_is_128b_132b_signal(pipe_ctx)
+			&& !dc_is_hdmi_frl_signal(pipe_ctx->stream->signal)) {
 		if (link_enc)
 			link_enc->funcs->setup(
 				link_enc,
@@ -2505,7 +2559,7 @@ void link_set_dpms_on(
 	pipe_ctx->stream->link->link_state_valid = true;
 
 	if (pipe_ctx->stream_res.tg->funcs->set_out_mux) {
-		if (dp_is_128b_132b_signal(pipe_ctx))
+		if (dp_is_128b_132b_signal(pipe_ctx) || dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
 			otg_out_dest = OUT_MUX_HPO_DP;
 		else
 			otg_out_dest = OUT_MUX_DIO;
@@ -2615,7 +2669,8 @@ void link_set_dpms_on(
 	 * from transmitter control.
 	 */
 	if (!(dc_is_virtual_signal(pipe_ctx->stream->signal) ||
-			dp_is_128b_132b_signal(pipe_ctx))) {
+			dp_is_128b_132b_signal(pipe_ctx) ||
+			dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))) {
 
 			if (link_enc)
 				link_enc->funcs->setup(
