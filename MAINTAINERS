@@ -3856,6 +3856,15 @@ L:	rust-for-linux@vger.kernel.org
 S:	Maintained
 F:	drivers/net/phy/ax88796b_rust.rs
 
+ARM/ASPEED CLOCK SUPPORT
+M:	Ryan Chen <ryan_chen@aspeedtech.com>
+R:	Joel Stanley <joel@jms.id.au>
+L:	linux-clk@vger.kernel.org
+L:	linux-aspeed@lists.ozlabs.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/mfd/aspeed,ast2x00-scu.yaml
+F:	drivers/clk/aspeed/
+
 ASPEED CRYPTO DRIVER
 M:	Neal Liu <neal_liu@aspeedtech.com>
 L:	linux-aspeed@lists.ozlabs.org (moderated for non-subscribers)
@@ -4444,11 +4453,6 @@ S:	Maintained
 F:	Documentation/filesystems/bfs.rst
 F:	fs/bfs/
 F:	include/uapi/linux/bfs_fs.h
-
-BINMAN
-M:	Simon Glass <sjg@chromium.org>
-S:	Supported
-F:	Documentation/devicetree/bindings/mtd/partitions/binman*
 
 BITMAP API
 M:	Yury Norov <yury.norov@gmail.com>
@@ -5739,6 +5743,7 @@ F:	include/trace/events/capability.h
 F:	include/uapi/linux/capability.h
 F:	kernel/capability.c
 F:	security/commoncap.c
+F:	security/commoncap_test.c
 
 CAPELLA MICROSYSTEMS LIGHT SENSOR DRIVER
 M:	Kevin Tsai <ktsai@capellamicro.com>
@@ -11399,7 +11404,7 @@ HIMAX HX83112B TOUCHSCREEN SUPPORT
 M:	Job Noorman <job@noorman.info>
 L:	linux-input@vger.kernel.org
 S:	Maintained
-F:	Documentation/devicetree/bindings/input/touchscreen/himax,hx83112b.yaml
+F:	Documentation/devicetree/bindings/input/touchscreen/trivial-touch.yaml
 F:	drivers/input/touchscreen/himax_hx83112b.c
 
 HIMAX HX852X TOUCHSCREEN DRIVER
@@ -11842,7 +11847,6 @@ F:	arch/x86/kernel/cpu/mshyperv.c
 F:	drivers/clocksource/hyperv_timer.c
 F:	drivers/hid/hid-hyperv.c
 F:	drivers/hv/
-F:	drivers/infiniband/hw/mana/
 F:	drivers/input/serio/hyperv-keyboard.c
 F:	drivers/iommu/hyperv-iommu.c
 F:	drivers/net/ethernet/microsoft/
@@ -11861,19 +11865,8 @@ F:	include/hyperv/hvhdk_mini.h
 F:	include/linux/hyperv.h
 F:	include/net/mana
 F:	include/uapi/linux/hyperv.h
-F:	include/uapi/rdma/mana-abi.h
 F:	net/vmw_vsock/hyperv_transport.c
 F:	tools/hv/
-
-HYPER-V FRAMEBUFFER DRIVER
-M:	"K. Y. Srinivasan" <kys@microsoft.com>
-M:	Haiyang Zhang <haiyangz@microsoft.com>
-M:	Wei Liu <wei.liu@kernel.org>
-M:	Dexuan Cui <decui@microsoft.com>
-L:	linux-hyperv@vger.kernel.org
-S:	Obsolete
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/hyperv/linux.git
-F:	drivers/video/fbdev/hyperv_fb.c
 
 HYPERBUS SUPPORT
 M:	Vignesh Raghavendra <vigneshr@ti.com>
@@ -14014,14 +14007,12 @@ L:	kvm@vger.kernel.org
 S:	Supported
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/kvms390/linux.git
 F:	Documentation/virt/kvm/s390*
-F:	arch/s390/include/asm/gmap.h
 F:	arch/s390/include/asm/gmap_helpers.h
 F:	arch/s390/include/asm/kvm*
 F:	arch/s390/include/uapi/asm/kvm*
 F:	arch/s390/include/uapi/asm/uvdevice.h
 F:	arch/s390/kernel/uv.c
 F:	arch/s390/kvm/
-F:	arch/s390/mm/gmap.c
 F:	arch/s390/mm/gmap_helpers.c
 F:	drivers/s390/char/uvdevice.c
 F:	tools/testing/selftests/drivers/s390x/uvdevice/
@@ -14076,6 +14067,7 @@ F:	Documentation/admin-guide/mm/kho.rst
 F:	Documentation/core-api/kho/*
 F:	include/linux/kexec_handover.h
 F:	include/linux/kho/
+F:	include/linux/kho/abi/
 F:	kernel/liveupdate/kexec_handover*
 F:	lib/test_kho.c
 F:	tools/testing/selftests/kho/
@@ -14768,6 +14760,7 @@ F:	include/linux/liveupdate.h
 F:	include/linux/liveupdate/
 F:	include/uapi/linux/liveupdate.h
 F:	kernel/liveupdate/
+F:	lib/tests/liveupdate.c
 F:	mm/memfd_luo.c
 F:	tools/testing/selftests/liveupdate/
 
@@ -16520,7 +16513,7 @@ S:	Maintained
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/rppt/memblock.git for-next
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/rppt/memblock.git fixes
 F:	Documentation/core-api/boot-time-mm.rst
-F:	Documentation/core-api/kho/bindings/memblock/*
+F:	include/linux/kho/abi/memblock.h
 F:	include/linux/memblock.h
 F:	mm/bootmem_info.c
 F:	mm/memblock.c
@@ -16582,6 +16575,17 @@ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
 T:	quilt git://git.kernel.org/pub/scm/linux/kernel/git/akpm/25-new
 F:	mm/
 F:	tools/mm/
+
+MEMORY MANAGEMENT - BALLOON
+M:	Andrew Morton <akpm@linux-foundation.org>
+M:	David Hildenbrand <david@kernel.org>
+L:	linux-mm@kvack.org
+L:	virtualization@lists.linux.dev
+S:	Maintained
+W:	http://www.linux-mm.org
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
+F:	include/linux/balloon.h
+F:	mm/balloon.c
 
 MEMORY MANAGEMENT - CORE
 M:	Andrew Morton <akpm@linux-foundation.org>
@@ -16810,7 +16814,6 @@ R:	Shakeel Butt <shakeel.butt@linux.dev>
 R:	Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
 L:	linux-mm@kvack.org
 S:	Maintained
-F:	mm/pt_reclaim.c
 F:	mm/vmscan.c
 F:	mm/workingset.c
 
@@ -17456,6 +17459,7 @@ MICROSOFT MANA RDMA DRIVER
 M:	Long Li <longli@microsoft.com>
 M:	Konstantin Taranov <kotaranov@microsoft.com>
 L:	linux-rdma@vger.kernel.org
+L:	linux-hyperv@vger.kernel.org
 S:	Supported
 F:	drivers/infiniband/hw/mana/
 F:	include/net/mana
@@ -17581,7 +17585,7 @@ S:	Maintained
 F:	Documentation/core-api/min_heap.rst
 F:	include/linux/min_heap.h
 F:	lib/min_heap.c
-F:	lib/test_min_heap.c
+F:	lib/tests/min_heap_kunit.c
 
 MIPI CCS, SMIA AND SMIA++ IMAGE SENSOR DRIVER
 M:	Sakari Ailus <sakari.ailus@linux.intel.com>
@@ -22888,7 +22892,7 @@ ROHM BD71828 CHARGER
 M:	Andreas Kemnade <andreas@kemnade.info>
 M:	Matti Vaittinen <mazziesaccount@gmail.com>
 S:	Maintained
-F:	drivers/power/supply/bd71828-charger.c
+F:	drivers/power/supply/bd71828-power.c
 
 ROHM BD79703 DAC
 M:	Matti Vaittinen <mazziesaccount@gmail.com>
@@ -23289,7 +23293,8 @@ F:	include/uapi/linux/vfio_ccw.h
 
 S390 VFIO-PCI DRIVER
 M:	Matthew Rosato <mjrosato@linux.ibm.com>
-M:	Eric Farman <farman@linux.ibm.com>
+M:	Farhan Ali <alifm@linux.ibm.com>
+R:	Eric Farman <farman@linux.ibm.com>
 L:	linux-s390@vger.kernel.org
 L:	kvm@vger.kernel.org
 S:	Supported
@@ -25245,6 +25250,7 @@ STATIC BRANCH/CALL
 M:	Peter Zijlstra <peterz@infradead.org>
 M:	Josh Poimboeuf <jpoimboe@kernel.org>
 M:	Jason Baron <jbaron@akamai.com>
+M:	Alice Ryhl <aliceryhl@google.com>
 R:	Steven Rostedt <rostedt@goodmis.org>
 R:	Ard Biesheuvel <ardb@kernel.org>
 S:	Supported
@@ -25256,6 +25262,9 @@ F:	include/linux/jump_label*.h
 F:	include/linux/static_call*.h
 F:	kernel/jump_label.c
 F:	kernel/static_call*.c
+F:	rust/helpers/jump_label.c
+F:	rust/kernel/generated_arch_static_branch_asm.rs.S
+F:	rust/kernel/jump_label.rs
 
 STI AUDIO (ASoC) DRIVERS
 M:	Arnaud Pouliquen <arnaud.pouliquen@foss.st.com>
@@ -26722,6 +26731,17 @@ F:	scripts/tracing/
 F:	scripts/tracepoint-update.c
 F:	tools/testing/selftests/ftrace/
 
+TRACING [RUST]
+M:	Alice Ryhl <aliceryhl@google.com>
+M:	Steven Rostedt <rostedt@goodmis.org>
+R:	Masami Hiramatsu <mhiramat@kernel.org>
+R:	Mathieu Desnoyers <mathieu.desnoyers@efficios.com>
+L:	linux-trace-kernel@vger.kernel.org
+L:	rust-for-linux@vger.kernel.org
+S:	Maintained
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/trace/linux-trace.git
+F:	rust/kernel/tracepoint.rs
+
 TRACING MMIO ACCESSES (MMIOTRACE)
 M:	Steven Rostedt <rostedt@goodmis.org>
 M:	Masami Hiramatsu <mhiramat@kernel.org>
@@ -27051,7 +27071,7 @@ M:	Manivannan Sadhasivam <mani@kernel.org>
 L:	linux-arm-msm@vger.kernel.org
 L:	linux-scsi@vger.kernel.org
 S:	Maintained
-F:	Documentation/devicetree/bindings/ufs/qcom,ufs.yaml
+F:	Documentation/devicetree/bindings/ufs/qcom*
 F:	drivers/ufs/host/ufs-qcom*
 
 UNIVERSAL FLASH STORAGE HOST CONTROLLER DRIVER RENESAS HOOKS
@@ -27489,7 +27509,7 @@ R:	Andy Shevchenko <andriy.shevchenko@linux.intel.com>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 F:	include/linux/uuid.h
-F:	lib/test_uuid.c
+F:	lib/tests/uuid_kunit.c
 F:	lib/uuid.c
 
 UV SYSFS DRIVER
@@ -27594,8 +27614,9 @@ F:	include/uapi/linux/vfio.h
 F:	tools/testing/selftests/vfio/
 
 VFIO FSL-MC DRIVER
+M:	Ioana Ciornei <ioana.ciornei@nxp.com>
 L:	kvm@vger.kernel.org
-S:	Obsolete
+S:	Maintained
 F:	drivers/vfio/fsl-mc/
 
 VFIO HISILICON PCI DRIVER
@@ -27776,9 +27797,7 @@ M:	David Hildenbrand <david@kernel.org>
 L:	virtualization@lists.linux.dev
 S:	Maintained
 F:	drivers/virtio/virtio_balloon.c
-F:	include/linux/balloon_compaction.h
 F:	include/uapi/linux/virtio_balloon.h
-F:	mm/balloon_compaction.c
 
 VIRTIO BLOCK AND SCSI DRIVERS
 M:	"Michael S. Tsirkin" <mst@redhat.com>
