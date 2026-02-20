@@ -1,7 +1,7 @@
-name: Generate patch
+name: Generate patch - Stable branch
 on:
   push:
-    branches: hdmi_frl
+    branches: hdmi_frl_stable
 
 jobs:
   generate_patch:
@@ -10,10 +10,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: hdmi_frl
+          ref: hdmi_frl_stable
           fetch-depth: 0
       - name: Generate patch
-        run: git diff origin/master > 0001-amdgpu-frl.patch
+        run: git diff tags/stable > 0001-amdgpu-frl.patch
       - name: Save artifacts
         uses: actions/upload-artifact@v4
         with:
