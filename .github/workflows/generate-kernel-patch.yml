@@ -85,6 +85,8 @@ jobs:
           tag_name: ${{ steps.tag.outputs.ogc_tag }}
           name: "OGC Kernel Patch Release – ${{
             steps.tag.outputs.ogc_tag }}"
+          body: |
+            For packages using this patchset, see https://github.com/OpenGamingCollective/kernel-packages/
           files: |
             monolithic.patch
             monolithic.patch.sig
