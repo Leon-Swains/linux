@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ogc_tag:
-        description: "Enter a tagged OGC kernel version in the format <kernel-version>-ogc<rev>"
+        description: "Enter a tagged OGC kernel version in the format v<kernel-version>-ogc<rev>"
         required: true
         type: string
 
