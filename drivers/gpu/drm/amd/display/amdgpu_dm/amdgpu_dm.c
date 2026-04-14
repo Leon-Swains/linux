@@ -3279,6 +3279,12 @@ static void emulated_link_detect(struct dc_link *link)
 		break;
 	}
 
+	case SIGNAL_TYPE_HDMI_FRL: {
+		sink_caps.transaction_type = DDC_TRANSACTION_TYPE_I2C;
+		sink_caps.signal = SIGNAL_TYPE_HDMI_FRL;
+		break;
+	}
+
 	case SIGNAL_TYPE_DVI_SINGLE_LINK: {
 		sink_caps.transaction_type = DDC_TRANSACTION_TYPE_I2C;
 		sink_caps.signal = SIGNAL_TYPE_DVI_SINGLE_LINK;
@@ -6779,12 +6785,19 @@ static void fill_stream_properties_from_drm_display_mode(
 
 	stream->out_transfer_func.type = TF_TYPE_PREDEFINED;
 	stream->out_transfer_func.tf = TRANSFER_FUNCTION_SRGB;
+
+	/* If pixel clock exceeds max HDMI TMDS clock, and FRL is not possible, try
+	 * to fall back to 4:2:0 encoding for TMDS
+	 */
 	if (stream->signal == SIGNAL_TYPE_HDMI_TYPE_A) {
 		if (!adjust_colour_depth_from_display_info(timing_out, info) &&
 		    drm_mode_is_420_also(info, mode_in) &&
 		    timing_out->pixel_encoding != PIXEL_ENCODING_YCBCR420) {
-			timing_out->pixel_encoding = PIXEL_ENCODING_YCBCR420;
-			adjust_colour_depth_from_display_info(timing_out, info);
+			if (!stream->link->link_enc->features.flags.bits.IS_HDMI_FRL_CAPABLE ||
+				stream->sink->edid_caps.frl_caps.max_rate == 0) {
+				timing_out->pixel_encoding = PIXEL_ENCODING_YCBCR420;
+				adjust_colour_depth_from_display_info(timing_out, info);
+			}
 		}
 	}
 
@@ -7383,7 +7396,7 @@ create_stream_for_sink(struct drm_connector *connector,
 
 	update_stream_signal(stream, sink);
 
-	if (stream->signal == SIGNAL_TYPE_HDMI_TYPE_A)
+	if (dc_is_hdmi_signal(stream->signal))
 		mod_build_hf_vsif_infopacket(stream, &stream->hfvsif_infopacket);
 
 	if (stream->signal == SIGNAL_TYPE_DISPLAY_PORT ||
@@ -7843,6 +7856,8 @@ amdgpu_dm_connector_atomic_duplicate_state(struct drm_connector *connector)
 	__drm_atomic_helper_connector_duplicate_state(connector, &new_state->base);
 
 	new_state->freesync_capable = state->freesync_capable;
+	new_state->freesync_on_desktop_capable =
+		state->freesync_on_desktop_capable;
 	new_state->abm_level = state->abm_level;
 	new_state->scaling = state->scaling;
 	new_state->underscan_enable = state->underscan_enable;
@@ -8555,6 +8570,7 @@ static int to_drm_connector_type(enum signal_type st, uint32_t connector_id)
 {
 	switch (st) {
 	case SIGNAL_TYPE_HDMI_TYPE_A:
+	case SIGNAL_TYPE_HDMI_FRL:
 		return DRM_MODE_CONNECTOR_HDMIA;
 	case SIGNAL_TYPE_EDP:
 		return DRM_MODE_CONNECTOR_eDP;
@@ -8959,6 +8975,7 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
 	aconnector->audio_inst = -1;
 	aconnector->pack_sdp_v1_3 = false;
 	aconnector->as_type = ADAPTIVE_SYNC_TYPE_NONE;
+	aconnector->hdmi_allm_capable = false;
 	memset(&aconnector->vsdb_info, 0, sizeof(aconnector->vsdb_info));
 	mutex_init(&aconnector->hpd_lock);
 	mutex_init(&aconnector->handle_mst_msg_ready);
@@ -9049,8 +9066,10 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
 	    connector_type == DRM_MODE_CONNECTOR_eDP) {
 		drm_connector_attach_hdr_output_metadata_property(&aconnector->base);
 
-		if (!aconnector->mst_root)
+		if (!aconnector->mst_root) {
 			drm_connector_attach_vrr_capable_property(&aconnector->base);
+			drm_connector_attach_passive_vrr_capable_property(&aconnector->base);
+		}
 
 		if (adev->dm.hdcp_workqueue)
 			drm_connector_attach_content_protection_property(&aconnector->base, true);
@@ -9153,6 +9172,10 @@ int amdgpu_dm_initialize_hdmi_connector(struct amdgpu_dm_connector *aconnector)
 	struct cec_connector_info conn_info;
 	struct drm_device *ddev = aconnector->base.dev;
 	struct device *hdmi_dev = ddev->dev;
+
+	/* ALLM */
+	drm_connector_attach_allm_capable_property(&aconnector->base);
+	drm_connector_attach_allm_mode_property(&aconnector->base);
 
 	if (amdgpu_dc_debug_mask & DC_DISABLE_HDMI_CEC) {
 		drm_info(ddev, "HDMI-CEC feature masked\n");
@@ -10844,6 +10867,31 @@ static int amdgpu_dm_atomic_setup_commit(struct drm_atomic_state *state)
 	return 0;
 }
 
+static void update_allm_state_on_crtc_stream(struct dm_crtc_state *new_crtc_state,
+					     const struct drm_connector_state *new_conn)
+{
+	struct mod_freesync_config *config = &new_crtc_state->freesync_config;
+	struct dc_stream_state *new_stream = new_crtc_state->stream;
+	bool allm_active = false;
+
+	switch (new_conn->allm_mode) {
+	case DRM_ALLM_MODE_ENABLED_DYNAMIC:
+		allm_active = config->state == VRR_STATE_ACTIVE_VARIABLE ||
+			      new_stream->content_type == DISPLAY_CONTENT_TYPE_GAME;
+		break;
+
+	case DRM_ALLM_MODE_ENABLED_FORCED:
+		allm_active = true;
+		break;
+
+	case DRM_ALLM_MODE_DISABLED:
+	default:
+		allm_active = false;
+	}
+
+	new_stream->hdmi_allm_active = allm_active;
+}
+
 /**
  * amdgpu_dm_atomic_commit_tail() - AMDgpu DM's commit tail implementation.
  * @state: The atomic state to commit
@@ -10886,12 +10934,14 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 	for_each_oldnew_connector_in_state(state, connector, old_con_state, new_con_state, i) {
 		struct dm_connector_state *dm_new_con_state = to_dm_connector_state(new_con_state);
 		struct dm_connector_state *dm_old_con_state = to_dm_connector_state(old_con_state);
+		struct amdgpu_dm_connector *dm_conn = to_amdgpu_dm_connector(connector);
 		struct amdgpu_crtc *acrtc = to_amdgpu_crtc(dm_new_con_state->base.crtc);
 		struct dc_surface_update *dummy_updates;
 		struct dc_stream_update stream_update;
 		struct dc_info_packet hdr_packet;
 		struct dc_stream_status *status = NULL;
 		bool abm_changed, hdr_changed, scaling_changed, output_color_space_changed = false;
+		bool allm_changed = false;
 
 		memset(&stream_update, 0, sizeof(stream_update));
 
@@ -10921,7 +10971,11 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 		hdr_changed =
 			!drm_connector_atomic_hdr_metadata_equal(old_con_state, new_con_state);
 
-		if (!scaling_changed && !abm_changed && !hdr_changed && !output_color_space_changed)
+		allm_changed = dm_conn->hdmi_allm_capable &&
+			       (new_con_state->allm_mode != old_con_state->allm_mode);
+
+		if (!scaling_changed && !abm_changed && !hdr_changed &&
+		    !output_color_space_changed && !allm_changed)
 			continue;
 
 		stream_update.stream = dm_new_crtc_state->stream;
@@ -10949,6 +11003,17 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 		if (hdr_changed) {
 			fill_hdr_info_packet(new_con_state, &hdr_packet);
 			stream_update.hdr_static_metadata = &hdr_packet;
+		}
+
+		if (allm_changed) {
+			update_allm_state_on_crtc_stream(dm_new_crtc_state, new_con_state);
+			mod_build_hf_vsif_infopacket(dm_new_crtc_state->stream,
+				&dm_new_crtc_state->stream->hfvsif_infopacket);
+
+			stream_update.hdmi_allm_active =
+				&dm_new_crtc_state->stream->hdmi_allm_active;
+			stream_update.hfvsif_infopacket =
+				&dm_new_crtc_state->stream->hfvsif_infopacket;
 		}
 
 		status = dc_stream_get_status(dm_new_crtc_state->stream);
@@ -11330,6 +11395,12 @@ static void get_freesync_config_for_crtc(
 		config.vsif_supported = true;
 		config.btr = true;
 
+		if (new_con_state->freesync_on_desktop_capable)
+			new_crtc_state->stream->freesync_on_desktop =
+				!new_crtc_state->base.passive_vrr_disabled;
+		else
+			new_crtc_state->stream->freesync_on_desktop = false;
+
 		if (fs_vid_mode) {
 			config.state = VRR_STATE_ACTIVE_FIXED;
 			config.fixed_refresh_in_uhz = new_crtc_state->freesync_config.fixed_refresh_in_uhz;
@@ -11341,6 +11412,7 @@ static void get_freesync_config_for_crtc(
 		}
 	} else {
 		config.state = VRR_STATE_UNSUPPORTED;
+		new_crtc_state->stream->freesync_on_desktop = false;
 	}
 out:
 	new_crtc_state->freesync_config = config;
@@ -13186,9 +13258,9 @@ static int parse_amd_vsdb_did(struct amdgpu_dm_connector *aconnector,
 	return false;
 }
 
-static int parse_amd_vsdb_cea(struct amdgpu_dm_connector *aconnector,
-			      const struct edid *edid,
-			      struct amdgpu_hdmi_vsdb_info *vsdb_info)
+static bool parse_amd_vsdb_cea(struct amdgpu_dm_connector *aconnector,
+			       const struct edid *edid,
+			       struct amdgpu_hdmi_vsdb_info *vsdb_info)
 {
 	struct amdgpu_hdmi_vsdb_info vsdb_local = {0};
 	u8 *edid_ext = NULL;
@@ -13217,7 +13289,7 @@ static int parse_amd_vsdb_cea(struct amdgpu_dm_connector *aconnector,
 		return -ENODEV;
 
 	*vsdb_info = vsdb_local;
-	return i;
+	return true;
 }
 
 static bool is_monitor_range_invalid(const struct drm_connector *conn)
@@ -13280,16 +13352,32 @@ static bool copy_range_to_amdgpu_connector(struct drm_connector *conn)
 	return is_freesync_capable(range);
 }
 
-/*
- * Returns true if range from AMD vsdb is bigger
- */
-static bool compare_ranges(struct drm_connector *conn,
-			   struct amdgpu_hdmi_vsdb_info *vsdb)
+static void extend_range_from_vsdb(struct drm_display_info *display,
+				   const struct amdgpu_hdmi_vsdb_info *vsdb)
 {
-	struct drm_monitor_range_info *range = &conn->display_info.monitor_range;
+	u16 vrr_min = display->monitor_range.min_vfreq;
+	u16 vrr_max = display->monitor_range.max_vfreq;
 
-	return (vsdb->max_refresh_rate_hz - vsdb->min_refresh_rate_hz) >
-	       (range->max_vfreq - range->min_vfreq);
+	/* Always extend upper limit */
+	if (vsdb->max_refresh_rate_hz > vrr_max)
+		vrr_max = vsdb->max_refresh_rate_hz;
+
+	/*
+	 * Only extend lower limit if current one disables LFC.
+
+	 * During widespread testing, we found that some manufacturers probably
+	 * had issues with their monitors' lower VRR boundaries and adjusted
+	 * them up (Gigabyte X34GS with official range 48 - 180, AMD vsdb 48 -
+	 * 180 yet Monitor Ranges 55 - 180). After setting the lower boundary
+	 * from AMD vsdb, such monitors start having blanking issues.
+	 *
+	 * Work around that by not touching VRR min if it still supports LFC.
+	 */
+	if (vsdb->min_refresh_rate_hz < vrr_min && (vrr_min * 2 >= vrr_max))
+		vrr_min = vsdb->min_refresh_rate_hz;
+
+	display->monitor_range.min_vfreq = vrr_min;
+	display->monitor_range.max_vfreq = vrr_max;
 }
 
 /**
@@ -13316,6 +13404,7 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 	struct drm_hdmi_vrr_cap hdmi_vrr = {0};
 	struct dpcd_caps dpcd_caps = {0};
 	const struct edid *edid;
+	bool freesync_on_desktop = false;
 	bool freesync_capable = false;
 	bool pcon_allowed = false;
 	bool is_pcon = false;
@@ -13358,13 +13447,12 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 			amdgpu_dm_connector->dc_link, connector->dev);
 	}
 
-	/* Some eDP panels only have the refresh rate range info in DisplayID */
-	if (is_monitor_range_invalid(connector))
-		parse_edid_displayid_vrr(connector, edid);
-
 	/* DP & eDP excluding PCONs */
 	if ((sink->sink_signal == SIGNAL_TYPE_EDP ||
 	     sink->sink_signal == SIGNAL_TYPE_DISPLAY_PORT) && !is_pcon) {
+		/* Some eDP panels only have the refresh rate range info in DisplayID */
+		if (is_monitor_range_invalid(connector))
+			parse_edid_displayid_vrr(connector, edid);
 		/*
 		 * Many monitors expose AMD vsdb in CAE even for DP and their
 		 * monitor ranges do not contain Range Limits Only flag
@@ -13372,9 +13460,8 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 		if (is_monitor_range_invalid(connector))
 			monitor_range_from_vsdb(&connector->display_info, &vsdb_info);
 
-		/* Use bigger range if found in AMD vsdb */
-		if (compare_ranges(connector, &vsdb_info))
-			monitor_range_from_vsdb(&connector->display_info, &vsdb_info);
+		/* Try extending range if found in AMD vsdb */
+		extend_range_from_vsdb(&connector->display_info, &vsdb_info);
 
 		if (dpcd_caps.allow_invalid_MSA_timing_param)
 			freesync_capable = copy_range_to_amdgpu_connector(connector);
@@ -13382,15 +13469,13 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 		/* eDP */
 		if (edid)
 			parse_amd_vsdb_did(amdgpu_dm_connector, edid, &vsdb_did);
-
 		if (vsdb_did.replay_mode) {
 			amdgpu_dm_connector->vsdb_info.replay_mode = vsdb_did.replay_mode;
 			amdgpu_dm_connector->vsdb_info.amd_vsdb_version = vsdb_did.amd_vsdb_version;
 			amdgpu_dm_connector->as_type = ADAPTIVE_SYNC_TYPE_EDP;
 		}
 
-	/* HDMI */
-	} else if (sink->sink_signal == SIGNAL_TYPE_HDMI_TYPE_A) {
+	} else if (dc_is_hdmi_signal(sink->sink_signal)) {
 		/* Prefer HDMI VRR */
 		if (hdmi_vrr.supported) {
 			amdgpu_dm_connector->as_type = ADAPTIVE_SYNC_TYPE_HDMI;
@@ -13399,6 +13484,7 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 			monitor_range_from_vsdb(&connector->display_info, &vsdb_info);
 
 		freesync_capable = copy_range_to_amdgpu_connector(connector);
+		freesync_on_desktop = freesync_capable;
 
 	/* DP -> HDMI PCON */
 	} else if (pcon_allowed) {
@@ -13416,8 +13502,10 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 	}
 
 update:
-	if (dm_con_state)
+	if (dm_con_state) {
 		dm_con_state->freesync_capable = freesync_capable;
+		dm_con_state->freesync_on_desktop_capable = freesync_on_desktop;
+	}
 
 	if (connector->state && amdgpu_dm_connector->dc_link && !freesync_capable &&
 	    amdgpu_dm_connector->dc_link->replay_settings.config.replay_supported) {
@@ -13426,8 +13514,15 @@ update:
 	}
 
 	if (connector->vrr_capable_property)
-		drm_connector_set_vrr_capable_property(connector,
-						       freesync_capable);
+		drm_connector_set_vrr_capable_property(connector, freesync_capable);
+
+	if (connector->passive_vrr_capable_property)
+		drm_connector_set_passive_vrr_capable_property(connector, freesync_on_desktop);
+
+	amdgpu_dm_connector->hdmi_allm_capable = connector->display_info.hdmi.allm;
+	if (connector->allm_capable_property)
+		drm_connector_set_allm_capable_property(
+			connector, connector->display_info.hdmi.allm);
 }
 
 void amdgpu_dm_trigger_timing_sync(struct drm_device *dev)
