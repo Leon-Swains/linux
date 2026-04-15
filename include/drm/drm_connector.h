@@ -395,15 +395,6 @@ struct drm_hdmi_info {
 	/** @vrr_cap: VRR capabilities of the sink */
 	struct drm_hdmi_vrr_cap vrr_cap;
 
-	/** @fapa_start_location: flag for the FAPA in blanking support */
-	bool fapa_start_location;
-
-	/** @allm: flag for Auto Low Latency Mode support by sink */
-	bool allm;
-
-	/** @vrr_cap: VRR capabilities of the sink */
-	struct drm_hdmi_vrr_cap vrr_cap;
-
 	/** @dsc_cap: DSC capabilities of the sink */
 	struct drm_hdmi_dsc_cap dsc_cap;
 };

@@ -4691,7 +4691,7 @@ static void set_avi_info_frame(
 	if (pipe_ctx->stream->timing.hdmi_vic != 0)
 		vic = 0;
 	/*todo, add 3DStereo support*/
-	if (format != TIMING_3D_FORMAT_NONE || stream->hdmi_allm_active) {
+	if (stream->timing.timing_3d_format != TIMING_3D_FORMAT_NONE || stream->hdmi_allm_active) {
 		// Based on HDMI specs hdmi vic needs to be converted to cea vic when 3D is enabled
 		switch (pipe_ctx->stream->timing.hdmi_vic) {
 		case 1:
