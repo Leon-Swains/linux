@@ -63,7 +63,7 @@ jobs:
           # Patch Series
           mkdir -p series
           git format-patch \
-           "refs/tags/${{ steps.tag.outputs.upstream_tag }}..refs/tags/${{ steps.tag.outputs.ogc_tag }}" \
+           "refs/tags/${{ steps.tag.outputs.upstream_tag }}..refs/tags/${{ steps.tag.outputs.sogc_tag }}" \
             -o series
 
           for PATCH in series/*.patch; do
@@ -82,7 +82,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: ${{ steps.tag.outputs.sogc_tag }}
+          tag_name: ${{ steps.tag.outputs.s_tag }}
           name: "SOGC Kernel Patch Release – ${{
             steps.tag.outputs.sogc_tag }}"
           body: |
