@@ -1,10 +1,10 @@
-name: Generate OGC Kernel Patch Release
+name: Generate SOGC Kernel Patch Release
 
 on:
   workflow_dispatch:
     inputs:
-      ogc_tag:
-        description: "Enter a tagged OGC kernel version in the format v<kernel-version>-ogc<rev>"
+      sogc_tag:
+        description: "Enter a tagged SOGC kernel version in the format v<kernel-version>-sogc<rev>"
         required: true
         type: string
 
@@ -19,25 +19,25 @@ jobs:
       - name: Extract tag names
         id: tag
         run: |
-          OGC_TAG="${{ github.event.inputs.ogc_tag }}"
+          SOGC_TAG="${{ github.event.inputs.sogc_tag }}"
 
-          # Expected format: v<kernel-version>-ogc<rev>
-          # Example: v6.6.123-ogc1
-          if [[ ! "$OGC_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-ogc[0-9]+$ ]]; then
-            echo "::error::Invalid tag '$OGC_TAG'. Expected format 'v<kernel-version>-ogc<rev>' (example: v6.6.123-ogc1)."
+          # Expected format: v<kernel-version>-sogc<rev>
+          # Example: v6.6.123-sogc1
+          if [[ ! "$SOGC_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-sogc[0-9]+$ ]]; then
+            echo "::error::Invalid tag '$SOGC_TAG'. Expected format 'v<kernel-version>-sogc<rev>' (example: v6.6.123-sogc1)."
             exit 1
           fi
 
-          UPSTREAM_TAG="${OGC_TAG%-ogc*}"
+          UPSTREAM_TAG="${SOGC_TAG%-sogc*}"
 
-          echo "ogc_tag=$OGC_TAG" >> "$GITHUB_OUTPUT"
+          echo "sogc_tag=$SOGC_TAG" >> "$GITHUB_OUTPUT"
           echo "upstream_tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Checkout our repository at tag
         uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ steps.tag.outputs.ogc_tag }}
+          ref: ${{ steps.tag.outputs.sogc_tag }}
 
       - name: Add kernel remote
         run: |
@@ -53,7 +53,7 @@ jobs:
         run: |
           # Monolithic Patch
           git diff "refs/tags/${{ steps.tag.outputs.upstream_tag }}" \
-                   "${{ steps.tag.outputs.ogc_tag }}" > monolithic.patch
+                   "${{ steps.tag.outputs.sogc_tag }}" > monolithic.patch
 
           gpg --batch --yes --pinentry-mode loopback \
               --passphrase "${{ secrets.SIGNING_PASSPHRASE }}" \
@@ -82,9 +82,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: ${{ steps.tag.outputs.ogc_tag }}
-          name: "OGC Kernel Patch Release – ${{
-            steps.tag.outputs.ogc_tag }}"
+          tag_name: ${{ steps.tag.outputs.sogc_tag }}
+          name: "SOGC Kernel Patch Release – ${{
+            steps.tag.outputs.sogc_tag }}"
           body: |
             For packages using this patchset, see https://github.com/OpenGamingCollective/kernel-packages/
           files: |
