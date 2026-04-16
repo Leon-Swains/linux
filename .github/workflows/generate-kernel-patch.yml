@@ -82,11 +82,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: ${{ steps.tag.outputs.s_tag }}
+          tag_name: ${{ steps.tag.outputs.sogc_tag }}
           name: "SOGC Kernel Patch Release – ${{
             steps.tag.outputs.sogc_tag }}"
           body: |
-            For packages using this patchset, see https://github.com/OpenGamingCollective/kernel-packages/
+            For packages using this patchset, see https://github.com/Leon-Swains/kernel-packages/
           files: |
             monolithic.patch
             monolithic.patch.sig
