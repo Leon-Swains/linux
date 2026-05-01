@@ -1,0 +1,9 @@
+diff a/drivers/gpu/drm/amd/display/dc/optc/dcn10/dcn10_optc.h b/drivers/gpu/drm/amd/display/dc/optc/dcn10/dcn10_optc.h	(rejected hunks)
+@@ -266,6 +266,7 @@
+ 
+ struct dcn_optc_registers {
+ 	OPTC_REG_VARIABLE_LIST_DCN;
++	uint32_t OTG_DRR_V_TOTAL_REACH_RANGE;
+ 	OPTC_REG_VARIABLE_LIST_DCN42;
+ };
+ 
