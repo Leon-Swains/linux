@@ -1341,6 +1341,19 @@ static bool detect_link_and_local_sink(struct dc_link *link,
 		if (dc_is_hdmi_signal(link->connector_signal))
 			read_scdc_caps(link->ddc, link->local_sink);
 
+		if (dc_is_hdmi_signal(link->connector_signal) && dc->debug.enable_hdmi_idcc) {
+			memset(&link->hdmi_cable_id, 0, sizeof(union hdmi_idcc_cable_id));
+			read_idcc_data(link->ddc, HDMI_IDCC_SCOPE_RW_CA,
+				link->hdmi_cable_id.raw, 0, 4);
+		}
+		if (sink->edid_caps.rr_capable)
+			hdmi_frl_write_read_request_enable(link->ddc);
+		if (reason != DETECT_REASON_FALLBACK && dc_is_hdmi_signal(link->connector_signal) &&
+				link->link_enc->features.flags.bits.IS_HDMI_FRL_CAPABLE && sink->edid_caps.max_frl_rate != 0) {
+			hdmi_frl_retrieve_link_cap(link, link->local_sink);
+		}
+		if (reason == DETECT_REASON_FALLBACK && sink->sink_signal == SIGNAL_TYPE_HDMI_FRL)
+			same_edid = false;
 		if (link->connector_signal == SIGNAL_TYPE_DISPLAY_PORT &&
 		    sink_caps.transaction_type ==
 		    DDC_TRANSACTION_TYPE_I2C_OVER_AUX) {

@@ -692,14 +692,21 @@ static void update_psp_stream_config(struct pipe_ctx *pipe_ctx, bool dpms_off)
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		config.stream_enc_idx =
 				pipe_ctx->stream_res.hpo_dp_stream_enc->id - ENGINE_ID_HPO_DP_0;
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		config.stream_enc_idx =
+				(uint8_t)(pipe_ctx->stream_res.hpo_frl_stream_enc->id - ENGINE_ID_HPO_0);
 
 	/* dig back end */
 	config.dig_be = pipe_ctx->stream->link->link_enc_hw_inst;
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		config.dig_be = (uint8_t)pipe_ctx->stream_res.hpo_frl_stream_enc->stream_enc_inst;
 
 	/* link encoder index */
 	config.link_enc_idx = link_enc->transmitter - TRANSMITTER_UNIPHY_A;
 	if (dp_is_128b_132b_signal(pipe_ctx))
 		config.link_enc_idx = pipe_ctx->link_res.hpo_dp_link_enc->inst;
+	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
+		config.link_enc_idx = (uint8_t)pipe_ctx->stream->link->hpo_frl_link_enc->inst;
 
 	/* dio output index is dpia index for DPIA endpoint & dcio index by default */
 	if (pipe_ctx->stream->link->ep_type == DISPLAY_ENDPOINT_USB4_DPIA)
@@ -1993,12 +2000,13 @@ static void enable_link_hdmi(struct pipe_ctx *pipe_ctx)
 			stream->phy_pix_clk,
 			stream->timing.flags.LTE_340MCSC_SCRAMBLE);
 
-	memset(&stream->link->cur_link_settings, 0,
-			sizeof(struct dc_link_settings));
+        if (dc->debug.enable_hdmi_idcc) {
+                union hdmi_idcc_source_id source_id;
 
-	display_color_depth = stream->timing.display_color_depth;
-	if (stream->timing.pixel_encoding == PIXEL_ENCODING_YCBCR422)
-		display_color_depth = COLOR_DEPTH_888;
+                source_id.raw = 0xff;
+                write_idcc_data(stream->link->ddc, HDMI_IDCC_SCOPE_WRITE,
+                                &source_id.raw, 0, 1);
+        }
 
 	/* We need to enable stream encoder for TMDS first to apply 1/4 TMDS
 	 * character clock in case that beyond 340MHz.
