@@ -1,9 +1,0 @@
-diff a/drivers/gpu/drm/amd/display/dc/hwss/hw_sequencer.h b/drivers/gpu/drm/amd/display/dc/hwss/hw_sequencer.h	(rejected hunks)
-@@ -1179,6 +1191,7 @@ enum block_sequence_func {
- 	HUBP_SET_BLANK,
- 	PHANTOM_HUBP_POST_ENABLE,
- 	STREAM_ENC_UPDATE_HDMI_INFO_PACKETS,
-+	HPO_FRL_STREAM_ENC_UPDATE_HDMI_INFO_PACKETS,
- 	HPO_DP_STREAM_ENC_UPDATE_DP_INFO_PACKETS_SDP_LINE_NUM,
- 	HPO_DP_STREAM_ENC_UPDATE_DP_INFO_PACKETS,
- 	STREAM_ENC_UPDATE_DP_INFO_PACKETS_SDP_LINE_NUM,
